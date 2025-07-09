@@ -3,9 +3,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from pegRNA_PredictingCodes import train_model, evaluate_model
-from django.db import models
-
+from models.OPED.pegRNA_PredictingCodes import train_model, evaluate_model
 
 def complement_seq(seq):
     """get the complementary sequence of the input sequence

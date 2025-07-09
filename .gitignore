@@ -1,0 +1,6 @@
+# recursively ignore pycache directories
+**/__pycache__/
+# ignore all .pyc files
+*.pyc
+# ignore all .pyo files
+*.pyo
