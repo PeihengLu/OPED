@@ -17,10 +17,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from pegRNA_PredictingCodes import read_data,evaluate_model
-# from pegsub import *
-#wenjianmulujiegou hunluan
-sys.path.insert(0,'./pegRNA_PredictingCodes')  #huifujiegou
+from models.OPED.pegRNA_PredictingCodes import read_data,evaluate_model
+sys.path.insert(0, './models/OPED/pegRNA_PredictingCodes')  # for local testing
 
 def set_seed(seed):
     random.seed(seed)
