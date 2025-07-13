@@ -12,12 +12,15 @@ import random
 import sys
 import os
 import copy
+from pathlib import Path
+# add the parent directory to the system path
+sys.path.insert(0, str(Path(__file__).parent.parent))  # for local testing
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.OPED.pegRNA_PredictingCodes import read_data,evaluate_model
+from pegRNA_PredictingCodes import read_data,evaluate_model
 # add the parent directory to the system path
 sys.path.insert(0, './models/OPED/pegRNA_PredictingCodes')
 

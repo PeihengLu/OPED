@@ -7,7 +7,12 @@ author: Feng Liu
 import pandas as pd
 import torch
 import time
-from models.OPED.pegRNA_PredictingCodes import read_data
+import sys
+from pathlib import Path
+# add the parent directory to the system path
+sys.path.insert(0, str(Path(__file__).parent.parent))  # for local testing
+
+from pegRNA_PredictingCodes import read_data
 
 
 def evaluate_sl(m, X_train, X_test, y_train, y_test):
