@@ -14,7 +14,7 @@ import os
 import copy
 from pathlib import Path
 # add the parent directory to the system path
-sys.path.insert(0, str(Path(__file__).parent.parent))  # for local testing
+sys.path.insert(0, str(Path(__file__).parent))  # for local testing
 
 import torch
 import torch.nn as nn
@@ -1131,7 +1131,60 @@ def save_model(model, model_dir='Model_Trained_20D', model_name='pegRNA_Model.pt
 def load_model(device, model_dir='Model_Trained_20D', model_name='pegRNA_Model.pt'):
     start = time.time()
     assert os.path.exists(os.path.join(model_dir, model_name)), 'The model does not exist!'
+    model_arch = TransformerEncoderDecoderModelOrder3(
+        embedding_size=64,
+        nhead=64,
+        ntokens=[4, 16, 64],
+        other_size=0,
+        softmax_bool=False,
+    )
+    # state_dict = torch.load(os.path.join(model_dir, model_name), map_location=device)
+    # model_arch.load_state_dict(state_dict)
+    # # save the entire model
+    # torch.save(model_arch, os.path.join(model_dir, model_name.replace('_weights.pt', '.pt')))
+
+    # return
+
     model = torch.load(os.path.join(model_dir, model_name),  map_location=device)
+
+    for param in model.named_parameters():
+        print(f'{param[0]}: {param[1].shape}, requires_grad: {param[1].requires_grad}')
+
+    # print out model's details
+    print(model)
+    print(f'Model type: {model.model_type}')
+    print(f'Embedding size: {model.embedding_size}')
+    print(f'Number of heads: {model.nhead}')
+    print(f'Number of tokens: {model.ntokens}')
+    try:
+        print(f'Number of encoder layers: {model.num_encoder_layers}')
+    except AttributeError:
+        print('Number of encoder layers: Not available')
+    try:
+        print(f'Number of decoder layers: {model.num_decoder_layers}')
+    except AttributeError:
+        print('Number of decoder layers: Not available')
+    try:
+        print(f'Other size: {model.other_size}')
+    except AttributeError:
+        print('Other size: Not available')
+    try:
+        print(f'Hidden size: {model.hidden_size}')
+    except AttributeError:
+        print('Hidden size: Not available')
+    try:
+        print(f'Hidden size fully: {model.hidden_size_fully}')
+    except AttributeError:
+        print('Hidden size fully: Not available')
+    try:
+        print(f'Softmax bool: {model.softmax_bool}')
+    except AttributeError:
+        print('Softmax bool: Not available')
+
+    
+
+    # save the model weights for transitioning to torch2
+    torch.save(model.state_dict(), os.path.join(model_dir, model_name.replace('.pt', '_weights.pt')))
 
     model.eval()
     print(f'Loading time:{time.time() - start:.2f}s')
