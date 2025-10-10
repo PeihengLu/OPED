@@ -14,7 +14,7 @@ import os
 import copy
 from pathlib import Path
 # add the parent directory to the system path
-sys.path.insert(0, str(Path(__file__).parent))  # for local testing
+sys.path.insert(0, str(Path(__file__).parent))
 
 import torch
 import torch.nn as nn
@@ -780,8 +780,9 @@ def train_rnn(rnn, criterion, optimizer, X_train, y_train, epoch_num, batch_size
     print(f'Training time:{time.time() - start}')
 
 
-def train_transformer(transformer, criterion, optimizer, scheduler, X_train, X_test, y_train, y_test,
-                      epoch_num, batch_size, device, best_epoch=True):
+def train_transformer(
+        transformer, criterion, optimizer, scheduler, X_train, X_test, y_train, y_test,
+        epoch_num, batch_size, device, best_epoch=True):
     best_model_dict = copy.deepcopy(transformer.state_dict())
     best_r = 0.0
     best_e = 0
