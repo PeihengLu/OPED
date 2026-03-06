@@ -12,7 +12,12 @@ from pathlib import Path
 # add the parent directory to the system path
 sys.path.insert(0, str(Path(__file__).parent))  # for local testing
 
-from pegRNA_PredictingCodes import read_data
+try:
+    # Preferred import path when used as `oped.pegRNA_PredictingCodes`.
+    from . import read_data
+except ImportError:
+    # Backward-compatible fallback for standalone script execution.
+    from pegRNA_PredictingCodes import read_data
 
 
 def evaluate_sl(m, X_train, X_test, y_train, y_test):

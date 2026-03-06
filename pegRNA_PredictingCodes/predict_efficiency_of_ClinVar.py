@@ -7,7 +7,10 @@ from pathlib import Path
 # add the parent directory to the system path
 sys.path.insert(0, str(Path(__file__).parent.parent))  # for local testing
 
-from pegRNA_PredictingCodes import train_model, evaluate_model
+try:
+    from . import train_model, evaluate_model
+except ImportError:
+    from pegRNA_PredictingCodes import train_model, evaluate_model
 
 def complement_seq(seq):
     """get the complementary sequence of the input sequence

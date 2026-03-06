@@ -20,9 +20,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from pegRNA_PredictingCodes import read_data,evaluate_model
-# add the parent directory to the system path
-sys.path.insert(0, './models/OPED/pegRNA_PredictingCodes')
+try:
+    # Preferred import path when used as `oped.pegRNA_PredictingCodes`.
+    from . import read_data, evaluate_model
+except ImportError:
+    # Backward-compatible fallback for standalone script execution.
+    from pegRNA_PredictingCodes import read_data, evaluate_model
 
 def set_seed(seed):
     random.seed(seed)
