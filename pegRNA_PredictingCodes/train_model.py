@@ -840,8 +840,24 @@ def train_transformer(
     return transformer
 
 
-def train_transformer_order3(transformer, criterion, optimizer, scheduler, X_train, X_test, y_train, y_test,
-                             epoch_num, batch_size, device, best_epoch=True):
+def train_transformer_order3(
+        transformer,
+        criterion,
+        optimizer,
+        scheduler,
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        epoch_num,
+        batch_size,
+        device,
+        best_epoch=True,
+        grad_clip=1.0,
+        reshuffle_each_epoch=True,
+        early_stopping_patience=None):
+    from tqdm import tqdm
+    tqdm.write(f'Training transformer order3 for {epoch_num} epochs...')
     best_model_dict = copy.deepcopy(transformer.state_dict())
     best_r = 0.0
     best_e = 0
@@ -850,20 +866,19 @@ def train_transformer_order3(transformer, criterion, optimizer, scheduler, X_tra
     n = len(X_train)
     print(f'Training data: {n}')
     batch_num = n // batch_size + 1
-    index_shuffled = np.random.permutation(n)
-    X_train = X_train.iloc[index_shuffled, :]
-    y_train = y_train.iloc[index_shuffled]
     # train_ds = TensorDataset(torch.tensor(np.array(X_train)), torch.tensor(np.array(y_train)))
     # train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    print('Epoch:', end="")
     start = time.time()
+    no_improve_epochs = 0
     for epoch in range(epoch_num):
         transformer.train()
-        if epoch % 10 == 0:
-            # print(f'\t{epoch}', end="")
-            sys.stdout.write(f'  {epoch}')
-            sys.stdout.flush()
-        for i in range(batch_num):
+        if reshuffle_each_epoch:
+            index_shuffled = np.random.permutation(n)
+            X_train = X_train.iloc[index_shuffled, :]
+            y_train = y_train.iloc[index_shuffled]
+        # if epoch % 10 == 0:
+        # print(f'\t{epoch}', end="")
+        for i in tqdm(range(batch_num), desc=f'Epoch {epoch}'):
             start_i = i * batch_size
             end_i = start_i + batch_size
             xb = X_train.iloc[start_i:end_i, :]
@@ -883,21 +898,35 @@ def train_transformer_order3(transformer, criterion, optimizer, scheduler, X_tra
             outputs, _ = transformer(input)
             loss = criterion(outputs.squeeze(), torch.tensor(list(yb), device=device, dtype=torch.float32))
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(rnn.parameters(), 0.25)
+            if grad_clip is not None and grad_clip > 0:
+                torch.nn.utils.clip_grad_norm_(transformer.parameters(), grad_clip)
             optimizer.step()
 
         scheduler.step()
+        train_r = evaluate_model.evaluate_transformer_order3(transformer, X_train, y_train, 1024, device, False)[0]['pearson'][0]
+        tqdm.write(f'Epoch {epoch} - Train Pearson: {train_r}')
         epoch_r = evaluate_model.evaluate_transformer_order3(transformer, X_test, y_test, 1024, device, False)[0]['pearson'][0]
+        tqdm.write(f'Epoch {epoch} - Pearson: {epoch_r}')
         if epoch_r > best_r:
             best_model_dict = copy.deepcopy(transformer.state_dict())
             best_r = epoch_r
             best_e = epoch
+            no_improve_epochs = 0
+        else:
+            no_improve_epochs += 1
+
+        if early_stopping_patience is not None and no_improve_epochs >= early_stopping_patience:
+            tqdm.write(
+                f'Early stopping at epoch {epoch} after '
+                f'{no_improve_epochs} epochs without validation improvement.'
+            )
+            break
     if best_epoch:
         transformer.load_state_dict(best_model_dict)
-        print(f'\nBest epoch: {best_e}')
-        print(f'Training time:{time.time() - start:.2f}s')
+        tqdm.write(f'Best epoch: {best_e}')
+        tqdm.write(f'Training time:{time.time() - start:.2f}s')
     else:
-        print(f'\nTraining time:{time.time() - start:.2f}s')
+        tqdm.write(f'Training time:{time.time() - start:.2f}s')
 
     return transformer
 
@@ -1064,9 +1093,23 @@ def train_and_test_transformer_order3(X_train, X_test, y_train, y_test, hyperpar
     # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=1)  # better to not use scheduler, gamma=1 means not using
 
-    transformer = train_transformer_order3(transformer, criterion, optimizer, scheduler, X_train, X_test, y_train, y_test,
-                                    hyperparameters['epoch_num'], hyperparameters['batch_size'], device,
-                                    hyperparameters['best_epoch'])
+    transformer = train_transformer_order3(
+        transformer,
+        criterion,
+        optimizer,
+        scheduler,
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        hyperparameters['epoch_num'],
+        hyperparameters['batch_size'],
+        device,
+        hyperparameters['best_epoch'],
+        grad_clip=hyperparameters.get('grad_clip', 1.0),
+        reshuffle_each_epoch=hyperparameters.get('reshuffle_each_epoch', True),
+        early_stopping_patience=hyperparameters.get('early_stopping_patience', 10),
+    )
 
     return transformer
 
