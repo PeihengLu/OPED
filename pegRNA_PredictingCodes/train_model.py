@@ -20,6 +20,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+import lightning.pytorch as pl  # type: ignore[reportMissingImports]
+
 try:
     # Preferred import path when used as `oped.pegRNA_PredictingCodes`.
     from . import read_data, evaluate_model
@@ -46,6 +48,73 @@ def resample_with_replacement(X_train, y_train, n):
     y_train = y_train.iloc[ind]
 
     return X_train, y_train
+
+
+class TransformerOrder3LightningModule(pl.LightningModule):
+    """Lightning wrapper for OPED TransformerEncoderModelOrder3."""
+
+    def __init__(
+        self,
+        model: nn.Module,
+        *,
+        lr: float = 3e-4,
+        weight_decay: float = 0.0,
+        scheduler_name: str = "step",
+        scheduler_kwargs=None,
+    ):
+        super().__init__()
+        self.model = model
+        self.lr = float(lr)
+        self.weight_decay = float(weight_decay)
+        self.scheduler_name = str(scheduler_name or "none").lower()
+        self.scheduler_kwargs = dict(scheduler_kwargs or {})
+        self.criterion = nn.MSELoss()
+
+    def _forward_pred(self, inputs):
+        pred, _ = self.model(inputs)
+        return pred.squeeze(-1)
+
+    def training_step(self, batch, _batch_idx):
+        x, y = batch
+        pred = self._forward_pred(x)
+        loss = self.criterion(pred, y)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, prog_bar=False)
+        return loss
+
+    def validation_step(self, batch, _batch_idx):
+        x, y = batch
+        pred = self._forward_pred(x)
+        loss = self.criterion(pred, y)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, prog_bar=True)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+        )
+        if self.scheduler_name == "step":
+            scheduler = torch.optim.lr_scheduler.StepLR(
+                optimizer,
+                step_size=int(self.scheduler_kwargs.get("step_size", 10)),
+                gamma=float(self.scheduler_kwargs.get("gamma", 0.95)),
+            )
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
+        if self.scheduler_name == "cosine":
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=int(self.scheduler_kwargs.get("t_max", 10)),
+                eta_min=float(self.scheduler_kwargs.get("eta_min", 0.0)),
+            )
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
+        if self.scheduler_name == "exponential":
+            scheduler = torch.optim.lr_scheduler.ExponentialLR(
+                optimizer,
+                gamma=float(self.scheduler_kwargs.get("gamma", 0.98)),
+            )
+            return {"optimizer": optimizer, "lr_scheduler": {"scheduler": scheduler, "interval": "epoch"}}
+        return optimizer
 
 
 def train_and_test_sl(X_train, X_test, y_train, y_test):
