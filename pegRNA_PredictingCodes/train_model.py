@@ -497,6 +497,41 @@ class TransformerEncoderModel(nn.Module):
         return output, att_weight
 
 
+def build_oped_fully_connected_layers(
+    *,
+    in_features: int,
+    hidden_size_fully,
+    output_size: int,
+    dropout: float,
+) -> nn.Module:
+    """Build OPED's final MLP for an arbitrary number of hidden sizes.
+
+    Older checkpoints (e.g. the vendored ``order3_decoder`` weights) use six
+    hidden layers. The previous hard-coded ``elif`` ladder only went up to five,
+    so those state_dicts could not load.
+    """
+    if hidden_size_fully is None:
+        return nn.Linear(in_features, output_size)
+    if not isinstance(hidden_size_fully, (list, tuple)) or not hidden_size_fully:
+        raise ValueError(
+            "hidden_size_fully must be None or a non-empty list of layer widths"
+        )
+    layers: list = []
+    prev = int(in_features)
+    for width in hidden_size_fully:
+        width = int(width)
+        layers.extend(
+            [
+                nn.Linear(prev, width),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+            ]
+        )
+        prev = width
+    layers.append(nn.Linear(prev, int(output_size)))
+    return nn.Sequential(*layers)
+
+
 class TransformerEncoderModelOrder3(nn.Module):
     """Container module with an encoder, a recurrent or transformer module, and a decoder."""
 
@@ -660,70 +695,13 @@ class TransformerEncoderDecoderModelOrder3(nn.Module):
                                                                             dropout=dropout)
                 self.encoder_decoder.append(encoder_i)
                 self.linear_att.append(linear_att_i)
-        if hidden_size_fully is None:
-            self.fully_connected_layers = nn.Linear(self.n*len(self.ntokens)*embedding_size + self.other_size, output_size)
-        elif len(hidden_size_fully) == 1:
-            self.fully_connected_layers = nn.Sequential(
-                nn.Linear(self.n*len(self.ntokens)*embedding_size + self.other_size, hidden_size_fully[0]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[0], output_size), )
-        elif len(hidden_size_fully) == 2:
-            self.fully_connected_layers = nn.Sequential(
-                nn.Linear(self.n*len(self.ntokens)*embedding_size + self.other_size, hidden_size_fully[0]),
-                nn.ReLU(),
-                # nn.LayerNorm(hidden_size_fully[0]),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[0], hidden_size_fully[1]),
-                nn.ReLU(),
-                # nn.LayerNorm(hidden_size_fully[1]),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[1], output_size), )
-        elif len(hidden_size_fully) == 3:
-            self.fully_connected_layers = nn.Sequential(
-                nn.Linear(self.n*len(self.ntokens)*embedding_size + self.other_size, hidden_size_fully[0]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[0], hidden_size_fully[1]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[1], hidden_size_fully[2]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[2], output_size), )
-        elif len(hidden_size_fully) == 4:
-            self.fully_connected_layers = nn.Sequential(
-                nn.Linear(self.n * len(self.ntokens) * embedding_size + self.other_size, hidden_size_fully[0]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[0], hidden_size_fully[1]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[1], hidden_size_fully[2]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[2], hidden_size_fully[3]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[3], output_size), )
-        else:
-            self.fully_connected_layers = nn.Sequential(
-                nn.Linear(self.n * len(self.ntokens) * embedding_size + self.other_size, hidden_size_fully[0]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[0], hidden_size_fully[1]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[1], hidden_size_fully[2]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[2], hidden_size_fully[3]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[3], hidden_size_fully[4]),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(hidden_size_fully[4], output_size), )
+        in_features = self.n * len(self.ntokens) * embedding_size + self.other_size
+        self.fully_connected_layers = build_oped_fully_connected_layers(
+            in_features=in_features,
+            hidden_size_fully=hidden_size_fully,
+            output_size=output_size,
+            dropout=dropout,
+        )
         # self.init_weights()
         self._reset_parameters()
 
