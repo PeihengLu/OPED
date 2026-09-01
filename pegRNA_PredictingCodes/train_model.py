@@ -22,6 +22,24 @@ import torch.nn.functional as F
 
 import lightning.pytorch as pl  # type: ignore[reportMissingImports]
 
+
+def _pool_with_pad_mask(values: torch.Tensor, scores: torch.Tensor, pad_mask: torch.Tensor):
+    """Attention-pool encoder outputs, NaN-safe for all-pad sequences.
+
+    ClinVar / short PBS-RT designs can yield all-padding k-mer channels (len < k).
+    Masking those positions to -inf then softmaxing produces NaNs that poison loss.
+    """
+    scores = scores.masked_fill(pad_mask.T, float("-inf"))
+    weights = F.softmax(scores, dim=0)
+    weights = torch.nan_to_num(weights, nan=0.0)
+    pooled = weights.unsqueeze(-1).permute(1, 2, 0).bmm(values.permute(1, 0, 2)).squeeze(-2)
+    all_pad = pad_mask.all(dim=1)
+    if bool(all_pad.any()):
+        pooled = pooled.clone()
+        pooled[all_pad] = 0
+    return pooled, weights.T
+
+
 try:
     # Preferred import path when used as `oped.pegRNA_PredictingCodes`.
     from . import read_data, evaluate_model
@@ -481,10 +499,9 @@ class TransformerEncoderModel(nn.Module):
             # scores = torch.sum(values.masked_fill(mask.T.unsqueeze(-1), 0), 2) * 1e6  #same with torch.sum(values * ~mask.T.unsqueeze(-1), 2)  # values * mask.T
             # scores = torch.mean(self.linear_att[i](values) * values, 2)
             scores = self.linear_att[i](values).squeeze(-1)
-            scores.masked_fill_(mask.T, float('-inf'))
-            scores = F.softmax(scores, dim=0)
-            att_weight.append(scores.T)
-            memories.append(scores.unsqueeze(-1).permute(1, 2, 0).bmm(values.permute(1, 0, 2)).squeeze(-2)) # N*1*S @ N*S*E = N*1*E
+            memory, scores_t = _pool_with_pad_mask(values, scores, mask)
+            att_weight.append(scores_t)
+            memories.append(memory) # N*1*S @ N*S*E = N*1*E
 
         # combined = torch.cat((memories[0][0], memories[1][0], memories[2][0]), 1)
         # combined = torch.cat((torch.mean(memories[0], 0), torch.mean(memories[1], 0), torch.mean(memories[2], 0)), 1)
@@ -641,10 +658,9 @@ class TransformerEncoderModelOrder3(nn.Module):
                 # scores = torch.sum(values.masked_fill(mask.T.unsqueeze(-1), 0), 2) * 1e6  #same with torch.sum(values * ~mask.T.unsqueeze(-1), 2)  # values * mask.T
                 # scores = torch.mean(self.linear_att[i](values) * values, 2)
                 scores = self.linear_att[j*len(self.ntokens)+i](values).squeeze(-1)
-                scores.masked_fill_(mask.T, float('-inf'))
-                scores = F.softmax(scores, dim=0)
-                att_weight.append(scores.T)
-                memories.append(scores.unsqueeze(-1).permute(1, 2, 0).bmm(values.permute(1, 0, 2)).squeeze(-2)) # N*1*S @ N*S*E = N*1*E
+                memory, scores_t = _pool_with_pad_mask(values, scores, mask)
+                att_weight.append(scores_t)
+                memories.append(memory) # N*1*S @ N*S*E = N*1*E
 
         # combined = torch.cat((memories[0][0], memories[1][0], memories[2][0]), 1)
         # combined = torch.cat((torch.mean(memories[0], 0), torch.mean(memories[1], 0), torch.mean(memories[2], 0)), 1)
@@ -771,10 +787,9 @@ class TransformerEncoderDecoderModelOrder3(nn.Module):
                 # scores = torch.sum(values.masked_fill(mask.T.unsqueeze(-1), 0), 2) * 1e6  #same with torch.sum(values * ~mask.T.unsqueeze(-1), 2)  # values * mask.T
                 # scores = torch.mean(self.linear_att[i](values) * values, 2)
                 scores = self.linear_att[j*len(self.ntokens)+i](values).squeeze(-1)
-                scores.masked_fill_(mask.T, float('-inf'))
-                scores = F.softmax(scores, dim=0)
-                att_weight.append(scores.T)
-                memories.append(scores.unsqueeze(-1).permute(1, 2, 0).bmm(values.permute(1, 0, 2)).squeeze(-2)) # N*1*S @ N*S*E = N*1*E
+                memory, scores_t = _pool_with_pad_mask(values, scores, mask)
+                att_weight.append(scores_t)
+                memories.append(memory) # N*1*S @ N*S*E = N*1*E
 
         encoder_memories = []
         encoder_masks = []
